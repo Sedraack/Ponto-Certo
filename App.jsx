@@ -32,9 +32,26 @@ const EXTRAS = [
   { id: "entrega", label: "Entrega ao domicílio", price: 10 },
 ];
 
-function formatEUR(n) {
-  if (!isFinite(n)) return "0,00 Kz";
-  return n.toLocaleString("pt-AO", { style: "currency", currency: "Kz" });
+// Moedas suportadas. "code" tem de ser um código ISO 4217 válido
+// (3 letras) — é o que o navegador exige para formatar valores.
+const CURRENCIES = [
+  { code: "AOA", label: "Kwanza (Kz)", locale: "pt-AO" },
+  { code: "EUR", label: "Euro (€)", locale: "pt-PT" },
+  { code: "USD", label: "Dólar (US$)", locale: "en-US" },
+  { code: "BRL", label: "Real (R$)", locale: "pt-BR" },
+];
+
+function formatMoney(n, currencyCode) {
+  if (!isFinite(n)) return "—";
+  const currency = CURRENCIES.find((c) => c.code === currencyCode) || CURRENCIES[0];
+  try {
+    return n.toLocaleString(currency.locale, { style: "currency", currency: currency.code });
+  } catch (e) {
+    // segurança extra: se por algum motivo o código de moeda não for
+    // reconhecido pelo navegador, nunca deixamos a app rebentar —
+    // mostramos o número simples em vez de página em branco.
+    return n.toFixed(2) + " " + currency.code;
+  }
 }
 
 function TapeDivider() {
@@ -92,6 +109,7 @@ export default function App() {
   const [loaded, setLoaded] = useState(false);
   const [hourlyRate, setHourlyRate] = useState(12);
   const [margin, setMargin] = useState(25);
+  const [currencyCode, setCurrencyCode] = useState("AOA");
 
   const [clientName, setClientName] = useState("");
   const [pieceType, setPieceType] = useState("simples");
@@ -113,6 +131,10 @@ export default function App() {
 
   const firstLoad = useRef(true);
 
+  // Atalho para formatar valores com a moeda atualmente escolhida —
+  // evita repetir "currencyCode" em cada chamada no resto do ficheiro.
+  const fmt = (n) => formatMoney(n, currencyCode);
+
   useEffect(() => {
     (async () => {
       try {
@@ -121,6 +143,7 @@ export default function App() {
           const parsed = JSON.parse(s.value);
           if (typeof parsed.hourlyRate === "number") setHourlyRate(parsed.hourlyRate);
           if (typeof parsed.margin === "number") setMargin(parsed.margin);
+          if (typeof parsed.currencyCode === "string") setCurrencyCode(parsed.currencyCode);
         }
       } catch (e) {
         // sem definições guardadas ainda, mantém os valores por omissão
@@ -145,14 +168,14 @@ export default function App() {
       try {
         const res = await window.storage.set(
           "settings",
-          JSON.stringify({ hourlyRate, margin })
+          JSON.stringify({ hourlyRate, margin, currencyCode })
         );
         if (!res) setStorageError(true);
       } catch (e) {
         setStorageError(true);
       }
     })();
-  }, [hourlyRate, margin, loaded]);
+  }, [hourlyRate, margin, currencyCode, loaded]);
 
   function handlePieceType(id) {
     setPieceType(id);
@@ -182,6 +205,7 @@ export default function App() {
       clientName: clientName || "Sem nome",
       pieceLabel: PIECE_TYPES.find((p) => p.id === pieceType)?.label || "",
       total,
+      currencyCode,
       breakdown: { laborCost, fittingsCost, materialCost, extrasCost, urgencyCost, marginCost },
     };
     const next = [quote, ...quotes];
@@ -210,12 +234,12 @@ export default function App() {
     const lines = [
       `Orçamento — ${clientName || "cliente"}`,
       `Peça: ${PIECE_TYPES.find((p) => p.id === pieceType)?.label || ""}`,
-      `Mão de obra: ${formatEUR(laborCost)}`,
-      extraFittings > 0 ? `Provas extra: ${formatEUR(fittingsCost)}` : null,
-      `Material: ${formatEUR(materialCost)}`,
-      extrasCost > 0 ? `Extras: ${formatEUR(extrasCost)}` : null,
-      urgent ? `Urgência: ${formatEUR(urgencyCost)}` : null,
-      `TOTAL: ${formatEUR(total)}`,
+      `Mão de obra: ${fmt(laborCost)}`,
+      extraFittings > 0 ? `Provas extra: ${fmt(fittingsCost)}` : null,
+      `Material: ${fmt(materialCost)}`,
+      extrasCost > 0 ? `Extras: ${fmt(extrasCost)}` : null,
+      urgent ? `Urgência: ${fmt(urgencyCost)}` : null,
+      `TOTAL: ${fmt(total)}`,
     ].filter(Boolean);
     return lines.join("\n");
   }
@@ -284,7 +308,7 @@ export default function App() {
               Como usar
             </h2>
             <ol style={{ color: INK, opacity: 0.8, fontSize: 14, lineHeight: 1.7 }} className="list-decimal ml-5 space-y-0.5">
-              <li>Defina abaixo o seu <strong>preço à hora</strong> e a <strong>margem de lucro</strong> — só precisa de fazer isto uma vez.</li>
+              <li>Escolha a sua <strong>moeda</strong>, o <strong>preço à hora</strong> e a <strong>margem de lucro</strong> — só precisa de fazer isto uma vez.</li>
               <li>Escolha o tipo de peça: as horas estimadas preenchem-se sozinhas, mas pode ajustá-las.</li>
               <li>Indique o tecido, os metros necessários e o número de provas combinadas.</li>
               <li>Marque os extras aplicáveis (bordado, forro, urgência, etc.).</li>
@@ -308,7 +332,14 @@ export default function App() {
             Definições do ateliê
           </summary>
           <div className="grid sm:grid-cols-2 gap-4 mt-3 p-4" style={{ background: PAPER_ALT, border: `1.5px solid ${LINE}`, borderRadius: 8 }}>
-            <Field label="Preço à hora (€)" hint="O que o seu tempo de trabalho vale.">
+            <Field label="Moeda" hint="Todos os valores da app passam a usar esta moeda.">
+              <select style={inputStyle} value={currencyCode} onChange={(e) => setCurrencyCode(e.target.value)}>
+                {CURRENCIES.map((c) => (
+                  <option key={c.code} value={c.code}>{c.label}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label={`Preço à hora`} hint="O que o seu tempo de trabalho vale.">
               <input
                 type="number"
                 min="0"
@@ -374,7 +405,7 @@ export default function App() {
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <Field label="Preço do tecido (€/metro)">
+              <Field label="Preço do tecido (por metro)">
                 <input
                   type="number"
                   min="0"
@@ -415,7 +446,7 @@ export default function App() {
                 {EXTRAS.map((ex) => (
                   <label key={ex.id} className="flex items-center gap-2 text-sm" style={{ color: INK }}>
                     <input type="checkbox" className="checkline" checked={!!extras[ex.id]} onChange={() => toggleExtra(ex.id)} />
-                    {ex.label} <span style={{ opacity: 0.5 }}>(+{formatEUR(ex.price)})</span>
+                    {ex.label} <span style={{ opacity: 0.5 }}>(+{fmt(ex.price)})</span>
                   </label>
                 ))}
               </div>
@@ -461,16 +492,16 @@ export default function App() {
                 Orçamento
               </span>
               <div className="mono" style={{ fontSize: 34, color: INK, fontWeight: 600, margin: "4px 0 14px" }}>
-                {formatEUR(total)}
+                {fmt(total)}
               </div>
 
               <div style={{ borderTop: `1.5px dashed ${LINE}`, paddingTop: 12 }} className="space-y-1.5 mono text-[13px]">
-                <Row label="Mão de obra" value={laborCost} />
-                {extraFittings > 0 && <Row label="Provas extra" value={fittingsCost} />}
-                <Row label="Material" value={materialCost} />
-                {extrasCost > 0 && <Row label="Extras" value={extrasCost} />}
-                {urgent && <Row label="Urgência" value={urgencyCost} color={THREAD} />}
-                <Row label={`Margem (${margin}%)`} value={marginCost} color={SAGE} />
+                <Row label="Mão de obra" value={laborCost} fmt={fmt} />
+                {extraFittings > 0 && <Row label="Provas extra" value={fittingsCost} fmt={fmt} />}
+                <Row label="Material" value={materialCost} fmt={fmt} />
+                {extrasCost > 0 && <Row label="Extras" value={extrasCost} fmt={fmt} />}
+                {urgent && <Row label="Urgência" value={urgencyCost} color={THREAD} fmt={fmt} />}
+                <Row label={`Margem (${margin}%)`} value={marginCost} color={SAGE} fmt={fmt} />
               </div>
 
               <div className="flex flex-col gap-2 mt-5">
@@ -509,7 +540,9 @@ export default function App() {
                     <div style={{ color: INK, opacity: 0.55, fontSize: 12.5 }}>{q.pieceLabel} · {q.date}</div>
                   </div>
                   <div className="flex items-center gap-4">
-                    <span className="mono" style={{ color: INK, fontWeight: 600, fontSize: 15 }}>{formatEUR(q.total)}</span>
+                    <span className="mono" style={{ color: INK, fontWeight: 600, fontSize: 15 }}>
+                      {formatMoney(q.total, q.currencyCode || currencyCode)}
+                    </span>
                     <button
                       onClick={() => deleteQuote(q.id)}
                       aria-label="Eliminar orçamento"
@@ -532,11 +565,11 @@ export default function App() {
   );
 }
 
-function Row({ label, value, color }) {
+function Row({ label, value, color, fmt }) {
   return (
     <div className="flex justify-between" style={{ color: color || INK, opacity: color ? 1 : 0.75 }}>
       <span>{label}</span>
-      <span>{formatEUR(value)}</span>
+      <span>{fmt(value)}</span>
     </div>
   );
 }

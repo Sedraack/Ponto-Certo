@@ -32,9 +32,9 @@ const EXTRAS = [
   { id: "entrega", label: "Entrega ao domicílio", price: 10 },
 ];
 
-function formatKz(n) {
+function formatEUR(n) {
   if (!isFinite(n)) return "0,00 Kz";
-  return n.toLocaleString("AO-AO", { style: "currency", currency: "Kz" });
+  return n.toLocaleString("pt-AO", { style: "currency", currency: "Kz" });
 }
 
 function TapeDivider() {

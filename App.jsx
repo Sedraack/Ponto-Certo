@@ -33,8 +33,8 @@ const EXTRAS = [
 ];
 
 function formatEUR(n) {
-  if (!isFinite(n)) return "0,00 €";
-  return n.toLocaleString("pt-PT", { style: "currency", currency: "EUR" });
+  if (!isFinite(n)) return "0,00 Kz";
+  return n.toLocaleString("pt-AO", { style: "currency", currency: "Kz" });
 }
 
 function TapeDivider() {
